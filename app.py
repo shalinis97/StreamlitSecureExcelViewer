@@ -1,100 +1,75 @@
-import os
+# app.py
+
 import streamlit as st
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from models import Base, User  # Import your SQLAlchemy models (adjust as needed)
-import streamlit_authenticator as stauth
-import bcrypt
+import pandas as pd
+import os
+from dotenv import load_dotenv
+from auth import authenticate_user, register_user
+import hashlib
 
-# Get the directory of the current script
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Load environment variables
+load_dotenv()
 
-# Ensure the directory for the database exists
-db_dir = os.path.join(BASE_DIR, 'data')
-os.makedirs(db_dir, exist_ok=True)
+# Initialize session state variables
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = None
 
-# Construct the full path to the database file
-db_path = os.path.join(db_dir, 'users.db')
+# Function to hash passwords (for additional security if needed)
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-# Update the DATABASE_URL
-DATABASE_URL = f"sqlite:///{db_path}"
+def main():
+    st.title("Secure Excel Viewer")
 
-# Create the database engine
-try:
-    engine = create_engine(
-        DATABASE_URL,
-        connect_args={'check_same_thread': False}
-    )
+    menu = ["Home", "Login", "Register"]
+    choice = st.sidebar.selectbox("Menu", menu)
 
-    # Create a configured "Session" class
-    Session = sessionmaker(bind=engine)
+    if choice == "Home":
+        st.subheader("Welcome to the Secure Excel Viewer")
+        if st.session_state.logged_in:
+            st.success(f"Logged in as {st.session_state.username}")
+            display_excel()
+        else:
+            st.info("Please login to view the Excel file.")
 
-    # Create a Session
-    session = Session()
+    elif choice == "Login":
+        st.subheader("Login Section")
 
-    # Create all tables in the database (if they don't exist)
-    Base.metadata.create_all(engine)
-except Exception as e:
-    st.error(f"Error connecting to the database: {e}")
-    st.stop()
+        username = st.text_input("Username")
+        password = st.text_input("Password", type='password')
 
-# Function to create a default admin user if none exists
-def create_default_admin():
-    admin_exists = session.query(User).filter_by(username='admin').first()
-    if not admin_exists:
-        hashed_password = bcrypt.hashpw('admin_password'.encode('utf-8'), bcrypt.gensalt())
-        admin_user = User(
-            username='admin',
-            email='admin@example.com',
-            password=hashed_password.decode('utf-8'),
-            is_admin=True
-        )
-        session.add(admin_user)
-        session.commit()
+        if st.button("Login"):
+            user = authenticate_user(username, password)
+            if user:
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.success(f"Welcome {username}")
+                display_excel()
+            else:
+                st.error("Invalid Username or Password")
 
-create_default_admin()
+    elif choice == "Register":
+        st.subheader("Create New Account")
 
-# Authentication setup
-def get_user_credentials():
-    users = session.query(User).all()
-    usernames = [user.username for user in users]
-    names = [user.username.capitalize() for user in users]
-    hashed_passwords = [user.password for user in users]
-    emails = [user.email for user in users]
+        new_user = st.text_input("Username")
+        new_email = st.text_input("Email")
+        new_password = st.text_input("Password", type='password')
 
-    credentials = {
-        'usernames': {}
-    }
+        if st.button("Sign Up"):
+            success = register_user(new_user, new_email, new_password)
+            if success:
+                st.success("You have successfully created an account")
+                st.info("Go to Login Menu to login")
 
-    for username, name, password, email in zip(usernames, names, hashed_passwords, emails):
-        credentials['usernames'][username] = {
-            'name': name,
-            'email': email,
-            'password': password
-        }
+def display_excel():
+    # Path to the Excel file
+    excel_file = os.path.join('backend_data', 'data.xlsx')
+    if os.path.exists(excel_file):
+        df = pd.read_excel(excel_file)
+        st.write(df)
+    else:
+        st.error("Excel file not found.")
 
-    return credentials
-
-credentials = get_user_credentials()
-
-authenticator = stauth.Authenticate(
-    credentials,
-    'some_cookie_name',
-    'some_signature_key',
-    cookie_expiry_days=1
-)
-
-name, authentication_status, username = authenticator.login('Login', 'main')
-
-if authentication_status:
-    authenticator.logout('Logout', 'sidebar')
-    st.sidebar.write(f'Welcome *{name}*')
-    st.title('Your Application')
-
-    # Your main application code goes here
-    st.write("This is the main content of the app.")
-
-elif authentication_status == False:
-    st.error('Username or password is incorrect')
-elif authentication_status == None:
-    st.warning('Please enter your username and password')
+if __name__ == '__main__':
+    main()
