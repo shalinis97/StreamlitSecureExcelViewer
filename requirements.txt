@@ -1,9 +1,9 @@
 streamlit==1.24.1
 pandas
-openpyxl
+openpyxl==3.1.2
 sqlalchemy==1.4.46
-bcrypt
-streamlit-authenticator
+bcrypt==4.0.1
+streamlit-authenticator==0.3.3
 PyYAML
-email-validator
+email-validator==1.3.1
 python-dotenv
